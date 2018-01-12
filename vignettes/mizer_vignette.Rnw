@@ -1,5 +1,4 @@
 % !Rnw weave = knitr
-
 \documentclass{article}
 
 %\VignetteIndexEntry{Introduction to mizer}
