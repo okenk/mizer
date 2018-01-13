@@ -62,7 +62,7 @@ valid_MizerParams <- function(object) {
 	dim(object@selectivity)[2],
 	dim(object@catchability)[2],
 	dim(object@interaction)[1],
-	dim(object@interaction)[2]) == 
+	dim(object@interaction)[2]-length(object@pp_names)) == 
 	    dim(object@species_params)[1])){
 	    msg <- "The number of species in the model must be consistent across the species_params, psi, intake_max, search_vol, activity, interaction (dim 1), selectivity, ft_pred_kernel_e, ft_pred_kernel_p, catchability and interaction (dim 2) slots"
 	    errors <- c(errors, msg)
@@ -139,7 +139,7 @@ valid_MizerParams <- function(object) {
 	dimnames(object@selectivity)[[2]],
 	dimnames(object@catchability)[[2]],
 	dimnames(object@interaction)[[1]],
-	dimnames(object@interaction)[[2]]) ==
+	dimnames(object@interaction)[[2]][(length(object@pp_names)+1):(length(object@pp_names)+dim(object@species_params)[1])]) ==
 	    object@species_params$species)){
 	    msg <- "The species names of species_params, psi, intake_max, search_vol, std_metab, ft_pred_kernel_e, ft_pred_kernel_p, activity, selectivity, catchability and interaction must all be the same"
 	    errors <- c(errors, msg)
@@ -163,11 +163,11 @@ valid_MizerParams <- function(object) {
 	    errors <- c(errors, msg)
     }
     # Check the vector slots
-    if(length(object@rr_pp) != length(object@w_full)){
+    if(dim(object@rr_pp)[2] != length(object@w_full)){
         msg <- "rr_pp must be the same length as w_full"
         errors <- c(errors, msg)
     }
-    if(length(object@cc_pp) != length(object@w_full)){
+    if(dim(object@rr_pp)[2] != length(object@w_full)){
         msg <- "cc_pp must be the same length as w_full"
         errors <- c(errors, msg)
     }
@@ -276,8 +276,9 @@ setClass(
         ft_pred_kernel_e = "array",
         ft_pred_kernel_p = "array",
         #z0 = "numeric",
-        rr_pp = "numeric",
-        cc_pp = "numeric", # was NinPP, carrying capacity of background
+        rr_pp = "array",
+        cc_pp = "array", # was NinPP, carrying capacity of background
+        pp_names = "character",
         species_params = "data.frame",
         interaction = "array",
         srr  = "function",
@@ -297,8 +298,8 @@ setClass(
         ft_pred_kernel_e = array(NA,dim = c(1,1), dimnames = list(sp = NULL,k = NULL)),
         ft_pred_kernel_p = array(NA,dim = c(1,1), dimnames = list(sp = NULL,k = NULL)),
         #z0 = NA_real_,
-        rr_pp = NA_real_,
-        cc_pp = NA_real_,
+        rr_pp = array(NA,dim = c(1,1), dimnames = list(resource = NULL,w = NULL)),
+        cc_pp = array(NA,dim = c(1,1), dimnames = list(resource = NULL,w = NULL)),
         #speciesParams = data.frame(),
         interaction = array(
             NA,dim = c(1,1), dimnames = list(predator = NULL, prey = NULL)
@@ -329,28 +330,26 @@ setClass(
 #'   all interactions between species are set to 1. Note that any dimnames of
 #'   the interaction matrix argument are ignored by the constructor. The
 #'   dimnames of the interaction matrix in the returned \code{MizerParams}
-#'   object are taken from the species names in the \code{species_params} slot.
+#'   object are taken from the species names and resource spectrum names in the \code{species_params} slot.
 #'   This means that the order of the columns and rows of the interaction matrix
-#'   argument should be the same as the species name in the
+#'   argument should be the same as the pp_names parameter followed by species names in the
 #'   \code{species_params} slot.
 #' @param min_w The smallest size of the community spectrum.
 #' @param max_w The largest size of the community spectrum.
 #'    Default value is the largest w_inf in the community x 1.1.
 #' @param no_w The number of size bins in the community spectrum.
-#' @param min_w_pp The smallest size of the background spectrum.
+#' @param min_w_pp The smallest size of the background spectra.
 #' @param no_w_pp Obsolete argument that is no longer used because the number
 #'    of plankton size bins is determined because all size bins have to
 #'    be logarithmically equally spaced.
 #' @param n Scaling of the intake. Default value is 2/3.
 #' @param p Scaling of the standard metabolism. Default value is 0.7. 
 #' @param q Exponent of the search volume. Default value is 0.8. 
-#' @param r_pp Growth rate of the primary productivity. Default value is 10. 
-#' @param kappa Carrying capacity of the resource spectrum. Default
-#'       value is 1e11.
-#' @param lambda Exponent of the resource spectrum. Default value is
-#'       (2+q-n).
-#' @param w_pp_cutoff The cut off size of the background spectrum.
-#'       Default value is 10.
+#' @param pp_names Names of the resource spectra.
+#' @param r_pp Growth rate of the resource spectra. Should be of the same length as pp_names. Default value is 4.
+#' @param kappa Carrying capacity of the resource spectra. Should be of the same length as pp_names.  Default value is
+#'   0.005.
+#' @param lambda Exponent of the resource spectra. Should be of the same length as pp_names. Default value is (2+q-n).
 #' @param f0 Average feeding level. Used to calculated \code{h} and
 #'       \code{gamma} if those are not columns in the species data frame. Also
 #'       requires \code{k_vb} (the von Bertalanffy K parameter) to be a column
@@ -402,7 +401,7 @@ setGeneric('MizerParams', function(object, interaction, ...)
 #' by user
 #' @rdname MizerParams
 setMethod('MizerParams', signature(object='numeric', interaction='missing'),
-    function(object, min_w = 0.001, max_w = 1000, no_w = 100,  min_w_pp = 1e-10, no_w_pp = NA, species_names=1:object, gear_names=species_names){
+    function(object, min_w = 0.001, max_w = 1000, no_w = 100,  min_w_pp = 1e-10, no_w_pp = NA, species_names=1:object,pp_names=as.character(1:length(min_w_pp)), gear_names=species_names){
 	#args <- list(...)
     if (!is.na(no_w_pp))
         warning("New mizer code does not support the parameter no_w_pp")
@@ -424,7 +423,8 @@ setMethod('MizerParams', signature(object='numeric', interaction='missing'),
             
 	# For fft methods we need a constant log step size throughout. 
 	# Therefore we use as many steps as are necessary to almost reach min_w_pp. 
-	x_pp <- rev(seq(from=log10(min_w), log10(min_w_pp), by=log10(min_w/max_w)/(no_w-1))[-1])
+	#browser()
+	x_pp <- rev(seq(from=log10(min_w), log10(min(min_w_pp)), by=log10(min_w/max_w)/(no_w-1))[-1])
 	w_full <- c(10^x_pp, w)
 	no_w_full <- length(w_full)
 	dw_full <- diff(w_full)
@@ -443,9 +443,9 @@ setMethod('MizerParams', signature(object='numeric', interaction='missing'),
 	
 	selectivity <- array(0, dim=c(length(gear_names), object, no_w), dimnames=list(gear=gear_names, sp=species_names, w=signif(w,3)))
 	catchability <- array(0, dim=c(length(gear_names), object), dimnames = list(gear=gear_names, sp=species_names))
-	interaction <- array(1, dim=c(object,object), dimnames = list(predator = species_names, prey = species_names))
-	vec1 <- as.numeric(rep(NA, no_w_full))
-	names(vec1) <- signif(w_full,3)
+	interaction <- array(1, dim=c(object,object+length(pp_names)), dimnames = list(predator = species_names, prey = c(pp_names,species_names)))
+	rr_pp <- array(NA, dim=c(length(pp_names),no_w_full), dimnames = list(resource=pp_names,w=signif(w_full,3)))
+	cc_pp <- array(NA, dim=c(length(pp_names),no_w_full), dimnames = list(resource=pp_names,w=signif(w_full,3)))
 	
 	# Make an empty data.frame for species_params
 	# This is just to pass validity check. 
@@ -461,13 +461,14 @@ setMethod('MizerParams', signature(object='numeric', interaction='missing'),
 
 	# Make the new object
 	# Should Z0, rrPP and ccPP have names (species names etc)?
+	#browser()
 	res <- new("MizerParams",
 	    w = w, dw = dw, w_full = w_full, dw_full = dw_full,
 	    psi = mat1, intake_max = mat1, search_vol = mat1, activity = mat1, 
 	    std_metab = mat1, ft_pred_kernel_e = ft_pred_kernel_e, 
 	    ft_pred_kernel_p = ft_pred_kernel_p,
 	    selectivity=selectivity, catchability=catchability,
-	    rr_pp = vec1, cc_pp = vec1, species_params = species_params,
+	    rr_pp = rr_pp, cc_pp = cc_pp, species_params = species_params,pp_names=pp_names,
 	    interaction = interaction, srr = srr) 
 	return(res)
     }
@@ -476,7 +477,7 @@ setMethod('MizerParams', signature(object='numeric', interaction='missing'),
 #' Constructor that takes the species_params data.frame and the interaction matrix
 #' @rdname MizerParams
 setMethod('MizerParams', signature(object='data.frame', interaction='matrix'),
-    function(object, interaction,  n = 2/3, p = 0.7, q = 0.8, r_pp = 10, 
+    function(object, interaction,  n = 2/3, p = 0.7, q = 0.8, r_pp = 10, pp_names = 'Resource',
              kappa = 1e11, lambda = (2+q-n), w_pp_cutoff = 10, 
              max_w = max(object$w_inf)*1.1, f0 = 0.6, 
              z0pre = 0.6, z0exp = n-1, ...){
@@ -521,7 +522,7 @@ setMethod('MizerParams', signature(object='data.frame', interaction='matrix'),
     # Sorting out gamma column
     if(!("gamma" %in% colnames(object))){
         message("Note: \tNo gamma column in species data frame so using f0, h, beta, sigma, lambda and kappa to calculate it.")
-        ae <- sqrt(2*pi) * object$sigma * object$beta^(lambda-2) * exp((lambda-2)^2 * object$sigma^2 / 2)
+        ae <- sqrt(2*pi) * object$sigma * object$beta^(lambda[1]-2) * exp((lambda[1]-2)^2 * object$sigma^2 / 2)
         object$gamma <- (object$h / (kappa * ae)) * (f0 / (1 - f0))
     }
     # Sort out z0 column
@@ -541,7 +542,7 @@ setMethod('MizerParams', signature(object='data.frame', interaction='matrix'),
 	no_sp <- nrow(object)
 	# Make an empty object of the right dimensions
 	res <- MizerParams(no_sp, species_names=object$species, 
-	                   gear_names=unique(object$gear), max_w=max_w,...)
+	                   gear_names=unique(object$gear), pp_names=pp_names,max_w=max_w,...)
 
 	# If not w_min column in species_params, set to w_min of community
 	if (!("w_min" %in% colnames(object)))
@@ -559,6 +560,7 @@ setMethod('MizerParams', signature(object='data.frame', interaction='matrix'),
 	# Start filling the slots
 	res@species_params <- object
 	# Check dims of interaction argument - make sure it's right
+	
 	if (!isTRUE(all.equal(dim(res@interaction), dim(interaction))))
 	    stop("interaction matrix is not of the right dimensions. Must be number of species x number of species")
 	# Check that all values of interaction matrix are 0 - 1. Issue warning if not
@@ -631,9 +633,12 @@ setMethod('MizerParams', signature(object='data.frame', interaction='matrix'),
 	}
 
 	# Background spectrum
-	res@rr_pp[] <- r_pp * res@w_full^(n-1) #weight specific plankton growth rate ##
-	res@cc_pp[] <- kappa*res@w_full^(-lambda) # the resource carrying capacity - one for each mp and m (130 of them)
-	res@cc_pp[res@w_full>w_pp_cutoff] <- 0      #set density of sizes < plankton cutoff size
+	#browser()
+	for (x in 1:length(pp_names)) {
+	  res@rr_pp[x,] <- r_pp[x]*res@w_full^(n-1) #weight specific plankton growth rate ##
+	  res@cc_pp[x,] <- kappa[x]* res@w_full^(-lambda[x]) # the resource carrying capacity - one for each mp and m (130 of them)
+	  res@cc_pp[x,res@w_full>w_pp_cutoff[x]] <- 0      #set density of sizes < plankton cutoff size
+	}
 	# Set the SRR to be a Beverton Holt esque relationship
 	# Can add more functional forms or user specifies own
 	res@srr <- function(rdi, species_params){
@@ -676,9 +681,9 @@ setMethod('MizerParams', signature(object='data.frame', interaction='matrix'),
 #' Constructor based on the species_params data.frame only with no interaction
 #' @rdname MizerParams
 setMethod('MizerParams', signature(object='data.frame', interaction='missing'),
-    function(object, ...){
-	interaction <- matrix(1,nrow=nrow(object), ncol=nrow(object))
-	res <- MizerParams(object,interaction, ...)
+    function(object, pp_names, ...){
+	interaction <- matrix(1,nrow=nrow(object), ncol=nrow(object)+length(pp_names))
+	res <- MizerParams(object,interaction, pp_names,...)
 	return(res)
 })
 

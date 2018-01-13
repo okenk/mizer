@@ -59,7 +59,7 @@ setGeneric('getPhiPrey', function(object, n, n_pp,...)
     standardGeneric('getPhiPrey'))
 
 #' @rdname getPhiPrey
-setMethod('getPhiPrey', signature(object='MizerParams', n = 'matrix', n_pp='numeric'),
+setMethod('getPhiPrey', signature(object='MizerParams', n = 'matrix', n_pp='matrix'),
     function(object, n, n_pp, ...){
 #        cat("In getPhiPrey\n")
 	# Check n dims
@@ -67,7 +67,7 @@ setMethod('getPhiPrey', signature(object='MizerParams', n = 'matrix', n_pp='nume
 	    stop("n does not have the right number of species (first dimension)")
 	if(dim(n)[2] != length(object@w))
 	    stop("n does not have the right number of size groups (second dimension)")
-	if(length(n_pp) != length(object@w_full))
+	if(dim(n_pp)[2] != length(object@w_full))
 	    stop("n_pp does not have the right number of size groups")
 
 	# The object@w vector only gives weights from the egg size up to the max fish size. 
@@ -75,15 +75,19 @@ setMethod('getPhiPrey', signature(object='MizerParams', n = 'matrix', n_pp='nume
 	# values of object@w_full such that (object@w_full)[idx_sp]=object@w
 	idx_sp <- (length(object@w_full) - length(object@w) + 1):length(object@w_full)
 
+	no_pp <- length(object@pp_names)
+	no_f <- dim(object@interaction)[2]-no_pp
 	fishEaten <- matrix(0, nrow = dim(n)[1], ncol=length(object@w_full))
 	# Looking at Equation (3.4), for available energy in the mizer vignette, 
 	# we have, for our predator species i, that fishEaten[k] equals 
 	# the sum over all species j of fish, of theta_{i,j}*N_j(wFull[k])        
-	fishEaten[, idx_sp] <- object@interaction %*% n
+	#browser()
+	fishEaten[, idx_sp] <- object@interaction[,(no_pp+1):(no_pp+no_f)] %*% n
+	pp_eaten <- object@interaction[,1:no_pp] %*% n_pp
 	# The vector f2 equals everything inside integral (3.4) except the feeding 
 	# kernel phi_i(w_p/w). 
 	# We work in log-space so an extra multiplier w_p is introduced.
-	f2 <- sweep(sweep(fishEaten, 2, n_pp, "+"), 2, object@w_full^2, "*")
+	f2 <- sweep(fishEaten + pp_eaten, 2, object@w_full^2, "*")
 	# Eq (3.4) is then a convolution integral in terms of f2[w_p] and phi[w_p/w].
 	# We approximate the integral by the trapezoidal method. Using the
 	# convolution theorem we can evaluate the resulting sum via fast fourier
@@ -155,7 +159,7 @@ setGeneric('getFeedingLevel', function(object, n, n_pp, phi_prey, ...)
 
 #' getFeedingLevel method for a \code{MizerParams} object with already calculated \code{phi_prey} matrix.
 #' @rdname getFeedingLevel
-setMethod('getFeedingLevel', signature(object='MizerParams', n = 'matrix', n_pp='numeric', phi_prey='matrix'),
+setMethod('getFeedingLevel', signature(object='MizerParams', n = 'matrix', n_pp='matrix', phi_prey='matrix'),
     function(object, n, n_pp, phi_prey, ...){
     # Check dims of phi_prey
         if (!all(dim(phi_prey) == c(nrow(object@species_params),length(object@w)))){
@@ -171,7 +175,7 @@ setMethod('getFeedingLevel', signature(object='MizerParams', n = 'matrix', n_pp=
 
 #' getFeedingLevel method for a \code{MizerParams} object without the \code{phi_prey} matrix argument.
 #' @rdname getFeedingLevel
-setMethod('getFeedingLevel', signature(object='MizerParams', n = 'matrix', n_pp='numeric', phi_prey='missing'),
+setMethod('getFeedingLevel', signature(object='MizerParams', n = 'matrix', n_pp='matrix', phi_prey='missing'),
     function(object, n, n_pp, ...){
         phi_prey <- getPhiPrey(object, n=n, n_pp=n_pp)
         # encountered food = available food * search volume
@@ -193,7 +197,7 @@ setMethod('getFeedingLevel', signature(object='MizerSim', n = 'missing',
             # Necessary as we only want single time step but may only have 1 species which makes using drop impossible
             n <- array(object@n[x,,],dim=dim(object@n)[2:3])
             dimnames(n) <- dimnames(object@n)[2:3]
-			feed <- getFeedingLevel(object@params, n=n, n_pp = object@n_pp[x,])
+			feed <- getFeedingLevel(object@params, n=n, n_pp = object@n_pp[x,,])
 			return(feed)}, .drop=drop)
         return(feed_time)
     }
@@ -240,7 +244,7 @@ setGeneric('getPredRate', function(object, n, n_pp, feeding_level)
 #' @rdname getPredRate
 # Called from project ->
 setMethod('getPredRate', signature(object='MizerParams', n = 'matrix', 
-                                   n_pp='numeric', feeding_level = 'matrix'),
+                                   n_pp='matrix', feeding_level = 'matrix'),
     function(object, n, n_pp, feeding_level){
         if (!all(dim(feeding_level) == c(nrow(object@species_params),length(object@w)))){
             stop("feeding_level argument must have dimensions: no. species (",nrow(object@species_params),") x no. size bins (",length(object@w),")")
@@ -273,7 +277,7 @@ setMethod('getPredRate', signature(object='MizerParams', n = 'matrix',
 
 #' \code{getPredRate} method without \code{feeding_level} argument.
 #' @rdname getPredRate
-setMethod('getPredRate', signature(object='MizerParams', n = 'matrix', n_pp='numeric', feeding_level = 'missing'),
+setMethod('getPredRate', signature(object='MizerParams', n = 'matrix', n_pp='matrix', feeding_level = 'missing'),
     function(object, n, n_pp){
         feeding_level <- getFeedingLevel(object, n=n, n_pp=n_pp)
         pred_rate <- getPredRate(object=object, n=n, n_pp=n_pp, feeding_level = feeding_level)
@@ -347,8 +351,10 @@ setMethod('getM2', signature(object='MizerParams', n = 'missing',
         }
         # Get indexes such that w_full[idx_sp[k]]==w[[k]]
         idx_sp <- (length(object@w_full) - length(object@w) + 1):length(object@w_full)
-        
-        m2 <- (t(object@interaction) %*% pred_rate)[, idx_sp, drop=FALSE]
+        #browser()
+        no_pp <- length(object@pp_names)
+        no_f <- dim(object@interaction)[2]-no_pp
+        m2 <- (t(object@interaction[,(no_pp+1):(no_pp+no_f)]) %*% pred_rate)[, idx_sp, drop=FALSE]
         return(m2)
     }
 )
@@ -356,7 +362,7 @@ setMethod('getM2', signature(object='MizerParams', n = 'missing',
 #' \code{getM2} method for \code{MizerParams} object without \code{pred_rate} argument.
 #' @rdname getM2
 setMethod('getM2', signature(object='MizerParams', n = 'matrix', 
-                             n_pp='numeric', pred_rate = 'missing'),
+                             n_pp='matrix', pred_rate = 'missing'),
     function(object, n, n_pp){
       feeding_level <- getFeedingLevel(object, n=n, n_pp=n_pp)
       
@@ -365,8 +371,10 @@ setMethod('getM2', signature(object='MizerParams', n = 'matrix',
       
       # Get indexes such that w_full[idx_sp[k]]==w[[k]]
       idx_sp <- (length(object@w_full) - length(object@w) + 1):length(object@w_full)
-      
-      m2 <- (t(object@interaction) %*% pred_rate)[, idx_sp, drop=FALSE]
+      #browser()
+      no_pp <- length(object@pp_names)
+      no_f <- dim(object@interaction)[2]-no_pp
+      m2 <- (t(object@interaction[,(no_pp+1):(no_pp+no_f)]) %*% pred_rate)[, idx_sp, drop=FALSE]
       return(m2)
     }
 )
@@ -379,7 +387,7 @@ setMethod('getM2', signature(object='MizerSim', n = 'missing', n_pp='missing', p
 		m2_time <- aaply(which(time_elements), 1, function(x){
             n <- array(object@n[x,,],dim=dim(object@n)[2:3])
             dimnames(n) <- dimnames(object@n)[2:3]
-			m2 <- getM2(object@params, n=n, n_pp = object@n_pp[x,])
+			m2 <- getM2(object@params, n=n, n_pp = object@n_pp[x,,])
 			return(m2)
 		}, .drop=drop)
 	return(m2_time)
@@ -421,7 +429,7 @@ setGeneric('getM2Background', function(object, n, n_pp, pred_rate)
 #' \code{getM2Background} method with \code{pred_array} argument.
 #' @rdname getM2Background
 setMethod('getM2Background', signature(object='MizerParams', n = 'matrix', 
-                                       n_pp='numeric', pred_rate='array'),
+                                       n_pp='matrix', pred_rate='array'),
     function(object, n, n_pp, pred_rate){
         if ((!all(dim(pred_rate) == c(nrow(object@species_params),length(object@w_full)))) | (length(dim(pred_rate))!=2)){
             stop("pred_rate argument must have 2 dimensions: no. species (",nrow(object@species_params),") x no. size bins in community + background (",length(object@w_full),")")
@@ -436,7 +444,7 @@ setMethod('getM2Background', signature(object='MizerParams', n = 'matrix',
 #' \code{getM2Background} method without \code{pred_array} argument.
 #' @rdname getM2Background
 setMethod('getM2Background', signature(object='MizerParams', n = 'matrix', 
-                                       n_pp='numeric',  pred_rate='missing'),
+                                       n_pp='matrix',  pred_rate='missing'),
     function(object, n, n_pp, pred_rate){
         pred_rate <- getPredRate(object,n=n,n_pp=n_pp)
         # Since pred_rate here is the result of calling getPredRate, we have that M2background equals 
@@ -688,7 +696,7 @@ setGeneric('getZ', function(object, n, n_pp, effort, m2)
 #' @rdname getZ
 # Called from project()
 setMethod('getZ', signature(object='MizerParams', n = 'matrix', 
-                            n_pp = 'numeric', effort='numeric', m2 = 'matrix'),
+                            n_pp = 'matrix', effort='numeric', m2 = 'matrix'),
     function(object, n, n_pp, effort, m2){
         if (!all(dim(m2) == c(nrow(object@species_params),length(object@w)))){
             stop("m2 argument must have dimensions: no. species (",nrow(object@species_params),") x no. size bins (",length(object@w),")")
@@ -702,7 +710,7 @@ setMethod('getZ', signature(object='MizerParams', n = 'matrix',
 #' \code{getZ} method without \code{m2} argument.
 #' @rdname getZ
 setMethod('getZ', signature(object='MizerParams', n = 'matrix', 
-                            n_pp = 'numeric', effort='numeric', m2 = 'missing'),
+                            n_pp = 'matrix', effort='numeric', m2 = 'missing'),
     function(object, n, n_pp, effort){
         m2 <- getM2(object, n=n, n_pp=n_pp)
         z <- getZ(object, n=n, n_pp=n_pp, effort=effort, m2=m2)
@@ -743,7 +751,7 @@ setGeneric('getEReproAndGrowth', function(object, n, n_pp, feeding_level)
 #' \code{getEReproAndGrowth} method with \code{feeding_level} argument.
 #' @rdname getEReproAndGrowth
 setMethod('getEReproAndGrowth', signature(object='MizerParams', n = 'matrix', 
-                                          n_pp = 'numeric', feeding_level='matrix'),
+                                          n_pp = 'matrix', feeding_level='matrix'),
     function(object, n, n_pp, feeding_level){
         if (!all(dim(feeding_level) == c(nrow(object@species_params),length(object@w)))){
             stop("feeding_level argument must have dimensions: no. species (",nrow(object@species_params),") x no. size bins (",length(object@w),")")
@@ -760,7 +768,7 @@ setMethod('getEReproAndGrowth', signature(object='MizerParams', n = 'matrix',
 #' \code{getEReproAndGrowth} method without \code{feeding_level} argument.
 #' @rdname getEReproAndGrowth
 setMethod('getEReproAndGrowth', signature(object='MizerParams', n = 'matrix', 
-                                          n_pp = 'numeric', feeding_level='missing'),
+                                          n_pp = 'matrix', feeding_level='missing'),
     function(object, n, n_pp){
         feeding_level <- getFeedingLevel(object, n=n, n_pp=n_pp)
         e <- getEReproAndGrowth(object, n=n, n_pp=n_pp, feeding_level=feeding_level)
@@ -802,7 +810,7 @@ setGeneric('getESpawning', function(object, n, n_pp, e)
 #' \code{getESpawning} method with \code{e} argument.
 #' @rdname getESpawning
 setMethod('getESpawning', signature(object='MizerParams', n = 'matrix', 
-                                    n_pp = 'numeric', e = 'matrix'),
+                                    n_pp = 'matrix', e = 'matrix'),
     function(object, n, n_pp, e){
         if (!all(dim(e) == c(nrow(object@species_params),length(object@w)))){
             stop("e argument must have dimensions: no. species (",nrow(object@species_params),") x no. size bins (",length(object@w),")")
@@ -815,7 +823,7 @@ setMethod('getESpawning', signature(object='MizerParams', n = 'matrix',
 #' \code{getESpawning} method without \code{e} argument.
 #' @rdname getESpawning
 setMethod('getESpawning', signature(object='MizerParams', n = 'matrix', 
-                                    n_pp = 'numeric', e = 'missing'),
+                                    n_pp = 'matrix', e = 'missing'),
     function(object, n, n_pp){
 	    e <- getEReproAndGrowth(object,n=n,n_pp=n_pp)
         e_spawning <- getESpawning(object, n=n, n_pp=n_pp, e=e)
@@ -859,7 +867,7 @@ setGeneric('getEGrowth', function(object, n, n_pp, e_spawning, e)
 #' \code{getEGrowth} method with \code{e_spawning} and \code{e} arguments.
 #' @rdname getEGrowth 
 setMethod('getEGrowth', signature(object='MizerParams', n = 'matrix', 
-                                  n_pp = 'numeric', e_spawning='matrix', e='matrix'),
+                                  n_pp = 'matrix', e_spawning='matrix', e='matrix'),
     function(object, n, n_pp, e_spawning, e){
         if (!all(dim(e_spawning) == c(nrow(object@species_params),length(object@w)))){
             stop("e_spawning argument must have dimensions: no. species (",nrow(object@species_params),") x no. size bins (",length(object@w),")")
@@ -877,7 +885,7 @@ setMethod('getEGrowth', signature(object='MizerParams', n = 'matrix',
 #' \code{getEGrowth} method without \code{e_spawning} and \code{e} arguments.
 #' @rdname getEGrowth
 setMethod('getEGrowth', signature(object='MizerParams', n = 'matrix', 
-                                  n_pp = 'numeric', e_spawning='missing', e='missing'),
+                                  n_pp = 'matrix', e_spawning='missing', e='missing'),
     function(object, n, n_pp){
         # Assimilated intake less activity and metabolism
         e <- getEReproAndGrowth(object,n=n,n_pp=n_pp)
@@ -922,7 +930,7 @@ setGeneric('getRDI', function(object, n, n_pp, e_spawning, ...)
 #' \code{getRDI} method with \code{e_spawning} argument.
 #' @rdname getRDI
 setMethod('getRDI', signature(object='MizerParams', n = 'matrix', 
-                              n_pp = 'numeric', e_spawning='matrix'),
+                              n_pp = 'matrix', e_spawning='matrix'),
     function(object, n, n_pp, e_spawning, sex_ratio = 0.5){
         if (!all(dim(e_spawning) == c(nrow(object@species_params),length(object@w)))){
             stop("e_spawning argument must have dimensions: no. species (",nrow(object@species_params),") x no. size bins (",length(object@w),")")
@@ -936,7 +944,7 @@ setMethod('getRDI', signature(object='MizerParams', n = 'matrix',
 #' \code{getRDI} method without \code{e_spawning} argument.
 #' @rdname getRDI
 setMethod('getRDI', signature(object='MizerParams', n = 'matrix', 
-                              n_pp = 'numeric', e_spawning='missing'),
+                              n_pp = 'matrix', e_spawning='missing'),
     function(object, n, n_pp, sex_ratio = 0.5){
         e_spawning <- getESpawning(object, n=n, n_pp=n_pp)
         rdi <- getRDI(object, n=n, n_pp=n_pp, e_spawning=e_spawning, sex_ratio=sex_ratio)
@@ -980,7 +988,7 @@ setGeneric('getRDD', function(object, n, n_pp, rdi, ...)
 #' \code{getRDD} method with \code{rdi} argument.
 #' @rdname getRDD
 setMethod('getRDD', signature(object='MizerParams', n = 'matrix', 
-                              n_pp = 'numeric', rdi='matrix'),
+                              n_pp = 'matrix', rdi='matrix'),
     function(object, n, n_pp, rdi, sex_ratio = 0.5){
         if (!all(dim(rdi) == c(nrow(object@species_params),1))){
             stop("rdi argument must have dimensions: no. species (",nrow(object@species_params),") x 1")
@@ -991,7 +999,7 @@ setMethod('getRDD', signature(object='MizerParams', n = 'matrix',
 
 #' \code{getRDD} method without \code{rdi} argument.
 #' @rdname getRDD
-setMethod('getRDD', signature(object='MizerParams', n = 'matrix', n_pp = 'numeric', rdi='missing'),
+setMethod('getRDD', signature(object='MizerParams', n = 'matrix', n_pp = 'matrix', rdi='missing'),
     function(object, n, n_pp, sex_ratio = 0.5){
     	rdi <- getRDI(object, n=n, n_pp=n_pp, sex_ratio = sex_ratio)
     	rdd <- getRDD(object, n=n, n_pp=n_pp, rdi=rdi, sex_ratio=sex_ratio)

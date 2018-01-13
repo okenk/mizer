@@ -98,7 +98,7 @@ set_community_model <- function(max_w = 1e6,
     p <- n # But not used as ks = 0
     # Estimate gamma if not supplied
     if (is.na(gamma)){
-        gamma <- (f0 * h * beta^(2-lambda)) / ((1-f0)*sqrt(2*pi)*kappa*sigma)
+        gamma <- (f0 * h * beta^(2-lambda[1])) / ((1-f0)*sqrt(2*pi)*kappa*sigma)
     }
     # Make the species data.frame
     com_params_df <- data.frame(
@@ -186,21 +186,22 @@ set_community_model <- function(max_w = 1e6,
 #' @param min_w The smallest size of the community spectrum.
 #' @param max_w The largest size of the community spectrum. Default value is the
 #'   largest w_inf in the community x 1.1.
-#' @param min_w_pp The smallest size of the background spectrum.
+#' @param min_w_pp The smallest size of the resource spectra.
 #' @param no_w_pp Obsolete argument that is no longer used because the number
 #'    of plankton size bins is determined because all size bins have to
 #'    be logarithmically equally spaced.
-#' @param w_pp_cutoff The cut off size of the background spectrum. Default value
+#' @param w_pp_cutoff The cut off size of the resource spectra.. Default value
 #'   is 1.
 #' @param k0 Multiplier for the maximum recruitment. Default value is 50.
 #' @param n Scaling of the intake. Default value is 2/3.
 #' @param p Scaling of the standard metabolism. Default value is 0.75.
 #' @param q Exponent of the search volume. Default value is 0.9.
 #' @param eta Factor to calculate \code{w_mat} from asymptotic size.
-#' @param r_pp Growth rate of the primary productivity. Default value is 4.
-#' @param kappa Carrying capacity of the resource spectrum. Default value is
+#' @param pp_names Names of the resource spectra.
+#' @param r_pp Growth rate of the resource spectra. Should be of the same length as pp_names. Default value is 4.
+#' @param kappa Carrying capacity of the resource spectra. Should be of the same length as pp_names.  Default value is
 #'   0.005.
-#' @param lambda Exponent of the resource spectrum. Default value is (2+q-n).
+#' @param lambda Exponent of the resource spectra. Should be of the same length as pp_names. Default value is (2+q-n).
 #' @param alpha The assimilation efficiency of the community. The default value
 #'   is 0.6
 #' @param ks Standard metabolism coefficient. Default value is 4.
@@ -255,12 +256,13 @@ set_trait_model <- function(no_sp = 10,
                             max_w = max_w_inf * 1.1,
                             min_w_pp = 1e-10,
                             no_w_pp = NA,
-                            w_pp_cutoff = 1,
+                            w_pp_cutoff = 10,
                             k0 = 50, # recruitment adjustment parameter
                             n = 2/3,
                             p = 0.75,
                             q = 0.9, 
                             eta = 0.25,
+                            pp_names='resource',
                             r_pp = 4,
                             kappa = 0.005,
                             lambda = 2+q-n,
@@ -281,7 +283,7 @@ set_trait_model <- function(no_sp = 10,
     # TODO: remove this here because it is already calculated in MizerParams()
     #       Having the same code in two locations is not a good idea
     if(is.na(gamma)){
-        alpha_e <- sqrt(2*pi) * sigma * beta^(lambda-2) * exp((lambda-2)^2 * sigma^2 / 2) # see A&P 2009
+        alpha_e <- sqrt(2*pi) * sigma * beta^(lambda[1]-2) * exp((lambda[1]-2)^2 * sigma^2 / 2) # see A&P 2009
         gamma <- h * f0 / (alpha_e * kappa * (1-f0)) # see A&P 2009 
     }
     w_inf <- 10^seq(from=log10(min_w_inf), to = log10(max_w_inf), length=no_sp)
@@ -298,6 +300,18 @@ set_trait_model <- function(no_sp = 10,
         stop("Length of gear_names argument must equal the number of species.")
     }
 
+    pp_params <- c('min_w_pp',
+                   'w_pp_cutoff',
+                   'r_pp', 
+                   'kappa', 
+                   'lambda')
+    #browser()
+    for (param in pp_params) {
+      l = length(get(param))
+      if(l != length(pp_names) & l!=1) stop('Length of ',param,' must be the same as length of pp_names or 1 (in which case it is recycled to length of pp_names)')
+      if(l != length(pp_names) & l==1) assign(param, rep(get(param),length(pp_names)))
+    }
+    
     # Make the species parameters data.frame
     trait_params_df <- data.frame(
             species = 1:no_sp,
@@ -317,7 +331,7 @@ set_trait_model <- function(no_sp = 10,
             erepro = 1
     )
     # Make the MizerParams
-    trait_params <- MizerParams(trait_params_df, min_w = min_w, max_w=max_w, no_w = no_w, min_w_pp = min_w_pp, w_pp_cutoff = w_pp_cutoff, n = n, p=p, q=q, r_pp=r_pp, kappa=kappa, lambda = lambda) 
+    trait_params <- MizerParams(trait_params_df, min_w = min_w, max_w=max_w, no_w = no_w, min_w_pp = min_w_pp, w_pp_cutoff = w_pp_cutoff, n = n, p=p, q=q, pp_names=pp_names,r_pp=r_pp, kappa=kappa, lambda = lambda) 
     # Sort out maximum recruitment - see A&P 2009
     # Get max flux at recruitment boundary, R_max
     # R -> | -> g0 N0

@@ -20,8 +20,8 @@ valid_MizerSim <- function(object){
 	msg <- "effort slot must have two dimensions"
 	errors <- c(errors, msg)
     }
-    if(length(dim(object@n_pp)) != 2){
-	msg <- "n_pp slot must have two dimensions"
+    if(!length(dim(object@n_pp)) >= 2){
+	msg <- "n_pp slot must have at leaast two dimensions"
 	errors <- c(errors, msg)
     }
     # Check time dimension is good - size, dim name, and names
@@ -59,16 +59,17 @@ valid_MizerSim <- function(object){
 	msg <- "Third dimension of n slot must have same size names as in the params slot"
 	errors <- c(errors, msg)
     }
+    #browser()
     # w dimension of n_pp
-    if(dim(object@n_pp)[2] != length(object@params@w_full)){
+    if(length(object@n_pp[1,1,]) != length(object@params@w_full)){
 	msg <- "Second dimension of n_pp slot must have same length as w_full in the params slot"
 	errors <- c(errors, msg)
     }
-    if(names(dimnames(object@n_pp))[2] != "w"){
-	msg <- "Second dimension of n_pp slot must be called 'w'"
+    if(names(dimnames(object@n_pp))[3] != "w"){
+	msg <- "Third dimension of n_pp slot must be called 'w'"
 	errors <- c(errors, msg)
     }
-    if(!all(dimnames(object@n_pp)$w == names(object@params@rr_pp))){
+    if(!all(dimnames(object@n_pp)$w == dimnames(object@params@rr_pp)[[2]])){
 	msg <- "Second dimension of n_pp slot must have same size names as rr_pp in the params slot"
 	errors <- c(errors, msg)
     }
@@ -128,7 +129,7 @@ setClass(
             NA,dim = c(1,1), dimnames = list(time = NULL, gear = NULL)
         ),
         n_pp = array(
-            NA,dim = c(1,1), dimnames = list(time = NULL, w = NULL)
+            NA,dim = c(1,1,1), dimnames = list(time = NULL, resource = NULL, w = NULL)
         )
     ),
     validity = valid_MizerSim
@@ -185,7 +186,9 @@ setMethod('MizerSim', signature(object='MizerParams'),
             stop("The t_dimnames argument should be increasing.")
         }
         no_sp <- nrow(object@species_params)
+        no_pp <- nrow(object@cc_pp)
         species_names <- dimnames(object@psi)$sp
+        pp_names <- dimnames(object@cc_pp)$resource
         no_w <- length(object@w)
         w_names <- dimnames(object@psi)$w
         t_dim <- length(t_dimnames)
@@ -200,11 +203,12 @@ setMethod('MizerSim', signature(object='MizerParams'),
                                               gear = gear_names))
 
         no_w_full <- length(object@w_full)
-        w_full_names <- names(object@rr_pp)
-        array_n_pp <- array(NA, dim = c(t_dim, no_w_full), 
-                            dimnames = list(time=t_dimnames, 
+        w_full_names <- dimnames(object@cc_pp)[[2]]
+        array_n_pp <- array(NA, dim = c(t_dim, no_pp,no_w_full), 
+                            dimnames = list(time=t_dimnames,
+                                            resource = pp_names,
                                             w = w_full_names))
-
+        #browser()
         sim <- new('MizerSim',
                n = array_n, 
                effort = array_effort,

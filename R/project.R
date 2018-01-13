@@ -181,7 +181,7 @@ setMethod('project', signature(object='MizerParams', effort='array'),
 
         # Set initial population
         sim@n[1,,] <- initial_n 
-        sim@n_pp[1,] <- initial_n_pp
+        sim@n_pp[1,,] <- initial_n_pp
 
         # Handy things
         no_sp <- nrow(sim@params@species_params) # number of species
@@ -208,7 +208,8 @@ setMethod('project', signature(object='MizerParams', effort='array'),
         # We want the first time step only but cannot use drop as there may only be a single species
         n <- array(sim@n[1,,],dim=dim(sim@n)[2:3])
         dimnames(n) <- dimnames(sim@n)[2:3]
-        n_pp <- sim@n_pp[1,]
+        n_pp <- array(sim@n_pp[1,,],dim=dim(sim@n_pp)[2:3])
+        dimnames(n_pp) <- dimnames(sim@n_pp)[2:3]
         t_steps <- dim(effort_dt)[1]-1
         for (i_time in 1:t_steps){
             # Do it piece by piece to save repeatedly calling methods
@@ -258,14 +259,16 @@ setMethod('project', signature(object='MizerParams', effort='array'),
 
             # Dynamics of background spectrum uses a semi-chemostat model (de Roos - ask Ken)
             # We use the exact solution under the assumption of constant mortality during timestep
-            tmp <- (sim@params@rr_pp * sim@params@cc_pp / (sim@params@rr_pp + m2_background))
-            n_pp <- tmp - (tmp - n_pp) * exp(-(sim@params@rr_pp+m2_background)*dt)
+            for(d in 1:dim(n_pp)[1]){
+              tmp <- (sim@params@rr_pp[d,] * sim@params@cc_pp[d,] / (sim@params@rr_pp[d,] + m2_background))
+              n_pp[d,] <- tmp - (tmp - n_pp[d,]) * exp(-(sim@params@rr_pp[d,]+m2_background)*dt)
+            }
 
             # Store results only every t_step steps.
             store <- t_dimnames_index %in% (i_time+1)
             if (any(store)){
                 sim@n[which(store),,] <- n 
-                sim@n_pp[which(store),] <- n_pp
+                sim@n_pp[which(store),,] <- n_pp
             }
         }
         # and end
