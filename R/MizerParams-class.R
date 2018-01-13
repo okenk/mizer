@@ -128,6 +128,7 @@ valid_MizerParams <- function(object) {
 
     # Check dimnames of species are identical
     # Bit tricky this one as I don't know of a way to compare lots of vectors at the same time. Just use == and the recycling rule
+    #browser()
     if(!all(c(
 	dimnames(object@psi)[[1]],
 	dimnames(object@intake_max)[[1]],
@@ -522,8 +523,8 @@ setMethod('MizerParams', signature(object='data.frame', interaction='matrix'),
     # Sorting out gamma column
     if(!("gamma" %in% colnames(object))){
         message("Note: \tNo gamma column in species data frame so using f0, h, beta, sigma, lambda and kappa to calculate it.")
-        ae <- sqrt(2*pi) * object$sigma * object$beta^(lambda[1]-2) * exp((lambda[1]-2)^2 * object$sigma^2 / 2)
-        object$gamma <- (object$h / (kappa * ae)) * (f0 / (1 - f0))
+        ae <- sqrt(2*pi) * object$sigma * object$beta^(min(lambda)-2) * exp((min(lambda)-2)^2 * object$sigma^2 / 2)
+        object$gamma <- (object$h / (max(kappa) * ae)) * (f0 / (1 - f0))
     }
     # Sort out z0 column
     if(!("z0" %in% colnames(object))){

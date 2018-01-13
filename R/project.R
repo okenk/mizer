@@ -248,6 +248,7 @@ setMethod('project', signature(object='MizerParams', effort='array'),
             # Boundary condition upstream end (recruitment)
             B[w_min_idx_array_ref] <- 1+e_growth[w_min_idx_array_ref]*dt/sim@params@dw[sim@params@species_params$w_min_idx]+z[w_min_idx_array_ref]*dt
             # Update first size group of n
+            #browser()
             n[w_min_idx_array_ref] <- (n[w_min_idx_array_ref] + rdd*dt/sim@params@dw[sim@params@species_params$w_min_idx]) / B[w_min_idx_array_ref]
             # Update n
             # for (i in 1:no_sp) # number of species assumed small, so no need to vectorize this loop over species

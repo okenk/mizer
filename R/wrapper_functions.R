@@ -283,8 +283,8 @@ set_trait_model <- function(no_sp = 10,
     # TODO: remove this here because it is already calculated in MizerParams()
     #       Having the same code in two locations is not a good idea
     if(is.na(gamma)){
-        alpha_e <- sqrt(2*pi) * sigma * beta^(lambda[1]-2) * exp((lambda[1]-2)^2 * sigma^2 / 2) # see A&P 2009
-        gamma <- h * f0 / (alpha_e * kappa * (1-f0)) # see A&P 2009 
+        alpha_e <- sqrt(2*pi) * sigma * beta^(min(lambda)-2) * exp((min(lambda)-2)^2 * sigma^2 / 2) # see A&P 2009
+        gamma <- h * f0 / (alpha_e * max(kappa) * (1-f0)) # see A&P 2009 
     }
     w_inf <- 10^seq(from=log10(min_w_inf), to = log10(max_w_inf), length=no_sp)
     w_mat <- w_inf * eta

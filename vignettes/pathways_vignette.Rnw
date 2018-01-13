@@ -1,0 +1,143 @@
+% !Rnw weave = knitr
+\documentclass{article}
+
+%\VignetteIndexEntry{Introduction to mizer}
+%\VignettePackage{mizer}
+%\VignetteEngine{knitr::knitr}
+
+\setlength{\parindent}{0pt}	% Eliminate the indent at the beginning of a new paragraph
+\setcounter{secnumdepth}{3}	% Elimate the section numbering starting from a specific depth (see WikiBook)
+\usepackage[round,sort]{natbib} 
+\usepackage[english]{babel} % No idea what this is but stops the et~al problem from natbib
+\usepackage{fixltx2e}
+\usepackage{graphicx}	% To manage external pictures
+\usepackage{float}
+\usepackage{subfig}	% To add subfigures within figures, with labels (see WikiBooks)
+\usepackage{tabularx}
+\usepackage{verbatim}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+\usepackage{amssymb,amsbsy,amsmath}
+\usepackage{epsfig}
+%\usepackage{epstopdf}
+\usepackage[left=3cm,top=3cm,bottom=3.5cm,right=3cm]{geometry}	% For easy management of document margins
+\usepackage{fancyhdr} % To customize the header/footer (see WikiBooks)
+\usepackage{rotating}
+\usepackage{authblk}
+\numberwithin{equation}{section}	% Equation numbers relative to sections
+
+%% Set PDF 1.5 and compression, including object compression
+%% Needed for MiKTeX -- most other distributions default to this
+\ifx\pdfoutput\undefined
+\else
+  \ifx\pdfoutput\relax
+  \else
+    \ifnum\pdfoutput>0
+      % PDF output
+      \pdfminorversion=5
+      \pdfcompresslevel=9
+      \pdfobjcompresslevel=2
+    \fi
+  \fi
+\fi
+
+% ---------------------------------------------------------------------------------------------------------------------------------------
+
+\newcommand{\code}[1]{{\texttt{#1}}}
+\newcommand{\pkg}[1]{{\texttt{#1}}}
+\newcommand{\class}[1]{{\textit{#1}}}
+\newcommand{\R}{{\normalfont\textsf{R }}{}}
+\newcommand{\args}[1]{{\texttt{#1}}}
+
+\begin{document}
+
+<<include=FALSE, cache=FALSE>>=
+library(knitr)
+opts_chunk$set(concordance=TRUE, cache=TRUE)
+@
+
+% Makes the ACTUAL images the same width as the text
+\setkeys{Gin}{width=0.95\textwidth}
+% width = x, in the <<>>= affects the R plot (i.e. label size) but not the actual image width
+% so width = 2 or width = 10 would give same image width in document, but labels and points etc would be different
+% height = x, the acutal image height is given by the width / height ratio and the actual image width
+% so image is always blown up to fit Gin width
+
+<<include=FALSE>>=
+opts_chunk$set(width = 7)
+@
+
+
+\title{Using multiple resource spectra within mizer}
+%\author{F. Scott, J. L. Blanchard, K. H. Andersen}
+\author[1]{Philipp Neubauer}
+\author[2]{Kiva Oken}
+\affil[1]{Dragonfly Data Science, Wellington, New Zealand}
+\affil[2]{Institute of Marine and Coastal Sciences, Rutgers University, New Brunswick, NJ, USA}
+\renewcommand\Authands{ and }
+\date{\pkg{mizer} version \Sexpr{packageDescription("mizer")[["Version"]]} , \Sexpr{Sys.Date()} }
+\maketitle
+
+\tableofcontents
+\setlength{\parskip}{4pt} % Space between paragraphs
+
+<<echo=FALSE>>=
+rm(list=ls())
+@ 
+\section{Try}
+
+Set up trait based model ith two resource streams, one primary consumer per resource, two secondary consumers with more flexible interactions, and one top predator with indisciminant feeding.
+
+<<tries>>=
+
+# useful to check that we're setting mizerparams up right
+ojo <- set_trait_model(no_sp = 10,w_inf=c(10,10,1000,1000,100000),pp_names = c('Phyto','Detritus'),r_pp = c(2,8),kappa=c(0.01,0.05))
+
+pathways <- c('Phyto','Detritus')
+
+species <- data.frame(species = c('Consumer 1',
+                                'Consumer 2',
+                                'Piscivore 1',
+                                'Piscivore 2',
+                                'Top Predator'),
+                      h       = 30,
+                      gamma   = 60,
+                      beta    = 100,
+                      sigma   = 2,
+                      w_inf   = c(10,10,1000,1000,100000),
+                      w_mat   = 0.25*c(10,10,1000,1000,100000),
+                      r_max   = c(0.07,0.07,1e-5,1e-5,3e-7),
+                      stringsAsFactors = F)
+
+inter <- matrix(c(1  ,0  ,1  ,0  ,0.8,0.2,0,
+                  0  ,1  ,0  ,1  ,0.2,0.8,0,
+                  0.8,0.2,0.8,0.2,1  ,0.2,0,
+                  0.2,0.8,0.2,0.8,0.2,1  ,0,
+                  1  ,1  ,1  ,1  ,1  ,1  ,1),nrow=5,ncol=7,byrow=T)
+
+dimnames(inter)[[1]] <- species$species
+dimnames(inter)[[2]] <- c(pathways, species$species)
+
+oj <- MizerParams(species,
+                  inter, 
+                  pp_names = pathways,
+                  r_pp     = c(8,4),
+                  kappa    = c(0.05,0.1),
+                  lambda   = c(2,2))
+
+pj <- project(oj, effort = 0)
+
+plot(pj)
+
+# with fishing
+pjf <- project(oj, effort = 0.5)
+
+plot(pjf)
+
+@
+
+%\bibliography{reflib}{}
+%\bibliographystyle{plain}
+%\bibliographystyle{plainnat}
+
+\end{document}
+
