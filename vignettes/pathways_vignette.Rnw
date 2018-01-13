@@ -129,7 +129,9 @@ pj <- project(oj, effort = 0)
 plot(pj)
 
 # with fishing
-pjf <- project(oj, effort = 0.5)
+effort = c(0,1,0,1,1)
+names(effort) <- species$species
+pjf <- project(oj, effort=effort)
 
 plot(pjf)
 
